@@ -1,7 +1,7 @@
 import 'dart:async';
-
+ 
 import 'package:flutter/foundation.dart';
-
+ 
 import '../models/app_settings.dart';
 import '../models/bluetooth_device_info.dart';
 import '../models/telemetry.dart';
@@ -10,21 +10,21 @@ import '../services/bluetooth_gateway.dart';
 import '../services/esp32_protocol.dart';
 import '../services/hybrid_bluetooth_gateway.dart';
 import '../services/settings_service.dart';
-
+ 
 class EcoFlotadorController extends ChangeNotifier {
   EcoFlotadorController({
     required this.bluetooth,
     required this.settingsService,
   });
-
+ 
   final BluetoothGateway bluetooth;
   final SettingsService settingsService;
-
+ 
   StreamSubscription<String>? _packetSubscription;
   StreamSubscription<bool>? _connectionSubscription;
   Timer? _keepAliveTimer;
   bool _isShutdown = false;
-
+ 
   /// El ESP32 real detiene los motores si no recibe un mensaje en 800 ms
   /// (failsafe de seguridad). La UI solo llama [move] cuando la dirección
   /// cambia, así que sin este reenvío periódico el bote se detendría solo
@@ -32,7 +32,7 @@ class EcoFlotadorController extends ChangeNotifier {
   /// dirección. Se reenvía el último comando cada 300 ms mientras haya
   /// movimiento activo.
   static const _keepAliveInterval = Duration(milliseconds: 300);
-
+ 
   VehicleState vehicle = const VehicleState();
   Telemetry telemetry = const Telemetry();
   AppSettings settings = const AppSettings();
@@ -40,9 +40,15 @@ class EcoFlotadorController extends ChangeNotifier {
   bool isScanning = false;
   bool isSaving = false;
   String? message;
-
+ 
+  /// Nivel de velocidad de los motores de propulsión: 1=lento, 2=medio,
+  /// 3=rápido. El ESP32 arranca con el mismo valor por defecto (medio),
+  /// así que ambos lados quedan sincronizados sin necesidad de un mensaje
+  /// inicial.
+  int motorSpeedLevel = 2;
+ 
   bool get controlsEnabled => settings.demoMode || vehicle.isConnected;
-
+ 
   Future<void> initialize() async {
     settings = await settingsService.load();
     vehicle = vehicle.copyWith(beltSpeed: settings.defaultBeltSpeed);
@@ -59,7 +65,7 @@ class EcoFlotadorController extends ChangeNotifier {
         unawaited(_send(vehicle.lastCommand));
       }
     });
-
+ 
     if (settings.demoMode) {
       await connect(
         const BluetoothDeviceInfo(
@@ -70,14 +76,14 @@ class EcoFlotadorController extends ChangeNotifier {
       );
     }
   }
-
+ 
   Future<void> scan() async {
     final wasConnected = vehicle.isConnected;
     isScanning = true;
     message = null;
     vehicle = vehicle.copyWith(connection: BluetoothConnectionState.scanning);
     notifyListeners();
-
+ 
     try {
       devices = await bluetooth.scan();
       vehicle = vehicle.copyWith(
@@ -95,12 +101,12 @@ class EcoFlotadorController extends ChangeNotifier {
       notifyListeners();
     }
   }
-
+ 
   Future<void> connect(BluetoothDeviceInfo device) async {
     vehicle = vehicle.copyWith(connection: BluetoothConnectionState.connecting);
     message = null;
     notifyListeners();
-
+ 
     try {
       await bluetooth.connect(device);
       vehicle = vehicle.copyWith(
@@ -115,7 +121,7 @@ class EcoFlotadorController extends ChangeNotifier {
     }
     notifyListeners();
   }
-
+ 
   Future<void> disconnect() async {
     await emergencyStop();
     await bluetooth.disconnect();
@@ -127,11 +133,11 @@ class EcoFlotadorController extends ChangeNotifier {
     );
     notifyListeners();
   }
-
+ 
   Future<void> move(Movement direction) async {
     if (!controlsEnabled) return;
     if (vehicle.movement == direction) return;
-
+ 
     final command = switch (direction) {
       Movement.forward => Esp32Protocol.forward,
       Movement.backward => Esp32Protocol.backward,
@@ -139,13 +145,24 @@ class EcoFlotadorController extends ChangeNotifier {
       Movement.right => Esp32Protocol.right,
       Movement.stopped => Esp32Protocol.stop,
     };
-
+ 
     vehicle = vehicle.copyWith(movement: direction, lastCommand: command);
     telemetry = telemetry.copyWith(motorOn: direction != Movement.stopped);
     notifyListeners();
     await _send(command);
   }
-
+ 
+  /// Cambia la velocidad de los motores de propulsión (1=lento, 2=medio,
+  /// 3=rápido) y avisa al ESP32 con "VEL:n". No depende del keep-alive:
+  /// se envía una sola vez apenas cambia el slider.
+  Future<void> setMotorSpeed(int level) async {
+    final clamped = level.clamp(1, 3);
+    if (motorSpeedLevel == clamped) return;
+    motorSpeedLevel = clamped;
+    notifyListeners();
+    if (controlsEnabled) await _send('VEL:$clamped');
+  }
+ 
   Future<void> emergencyStop() async {
     vehicle = vehicle.copyWith(
       movement: Movement.stopped,
@@ -154,13 +171,13 @@ class EcoFlotadorController extends ChangeNotifier {
     );
     telemetry = telemetry.copyWith(motorOn: false, beltOn: false);
     notifyListeners();
-
+ 
     if (controlsEnabled) {
       await _send(Esp32Protocol.stop);
       await _send(Esp32Protocol.beltOff);
     }
   }
-
+ 
   Future<void> setBeltRunning(bool running) async {
     if (!controlsEnabled) return;
     vehicle = vehicle.copyWith(beltRunning: running);
@@ -168,7 +185,7 @@ class EcoFlotadorController extends ChangeNotifier {
     notifyListeners();
     await _send(running ? Esp32Protocol.beltOn : Esp32Protocol.beltOff);
   }
-
+ 
   Future<void> setBeltSpeed(double value) async {
     final speed = value.round().clamp(0, 100).toInt();
     if (vehicle.beltSpeed == speed) return;
@@ -176,27 +193,17 @@ class EcoFlotadorController extends ChangeNotifier {
     notifyListeners();
     if (controlsEnabled) await _send(Esp32Protocol.beltSpeed(speed));
   }
-
-  int motorSpeedLevel = 2; // 1=lento, 2=medio, 3=rápido (por defecto medio, igual que el ESP32)
-
-  Future<void> setMotorSpeed(int level) async {
-    final clamped = level.clamp(1, 3);
-    if (motorSpeedLevel == clamped) return;
-    motorSpeedLevel = clamped;
-    notifyListeners();
-    if (controlsEnabled) await _send('VEL:$clamped');
-  }
-
+ 
   Future<void> setDemoMode(bool enabled) async {
     settings = settings.copyWith(demoMode: enabled);
     notifyListeners();
     await saveSettings();
-
+ 
     final gateway = bluetooth;
     if (gateway is HybridBluetoothGateway) {
       await gateway.useRealHardware(!enabled);
     }
-
+ 
     if (enabled && !vehicle.isConnected) {
       await connect(
         const BluetoothDeviceInfo(
@@ -209,12 +216,12 @@ class EcoFlotadorController extends ChangeNotifier {
       await disconnect();
     }
   }
-
+ 
   void updateSettings(AppSettings next) {
     settings = next;
     notifyListeners();
   }
-
+ 
   Future<void> saveSettings() async {
     isSaving = true;
     notifyListeners();
@@ -223,7 +230,7 @@ class EcoFlotadorController extends ChangeNotifier {
     message = 'Configuración guardada en el dispositivo.';
     notifyListeners();
   }
-
+ 
   void simulateAlert({int? battery, int? bin}) {
     if (!settings.demoMode) return;
     telemetry = telemetry.copyWith(
@@ -232,7 +239,7 @@ class EcoFlotadorController extends ChangeNotifier {
     );
     notifyListeners();
   }
-
+ 
   Future<void> _send(String command) async {
     if (!vehicle.isConnected && !settings.demoMode) return;
     try {
@@ -241,7 +248,7 @@ class EcoFlotadorController extends ChangeNotifier {
       _onConnectionChanged(false);
     }
   }
-
+ 
   void _onPacket(String packet) {
     telemetry = Esp32Protocol.parseTelemetry(packet, telemetry);
     vehicle = vehicle.copyWith(
@@ -250,7 +257,7 @@ class EcoFlotadorController extends ChangeNotifier {
     );
     notifyListeners();
   }
-
+ 
   void _onConnectionChanged(bool connected) {
     vehicle = vehicle.copyWith(
       connection: connected
@@ -265,7 +272,7 @@ class EcoFlotadorController extends ChangeNotifier {
     }
     notifyListeners();
   }
-
+ 
   Future<void> shutdown() async {
     if (_isShutdown) return;
     _isShutdown = true;
@@ -274,10 +281,11 @@ class EcoFlotadorController extends ChangeNotifier {
     await _connectionSubscription?.cancel();
     await bluetooth.dispose();
   }
-
+ 
   @override
   void dispose() {
     unawaited(shutdown());
     super.dispose();
   }
 }
+ 
