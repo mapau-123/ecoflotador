@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+ 
 import '../../app/theme/app_colors.dart';
 import '../../models/vehicle_state.dart';
 import '../../providers/eco_flotador_scope.dart';
@@ -7,17 +7,18 @@ import '../../widgets/belt_control.dart';
 import '../../widgets/hmi_card.dart';
 import '../../widgets/joystick.dart';
 import '../../widgets/section_heading.dart';
+import '../../widgets/speed_control.dart';
 import '../../widgets/status_pill.dart';
-
+ 
 class ControlScreen extends StatelessWidget {
   const ControlScreen({super.key});
-
+ 
   @override
   Widget build(BuildContext context) {
     final controller = EcoFlotadorScope.of(context);
     final enabled = controller.controlsEnabled;
     final movement = controller.vehicle.movement;
-
+ 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 30),
       child: Center(
@@ -74,7 +75,7 @@ class ControlScreen extends StatelessWidget {
                     enabled: enabled,
                     onMove: controller.move,
                   );
-
+ 
                   return wide
                       ? Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -93,6 +94,8 @@ class ControlScreen extends StatelessWidget {
                         );
                 },
               ),
+              const SizedBox(height: 14),
+              SpeedControl(controller: controller, enabled: enabled),
               const SizedBox(height: 14),
               Semantics(
                 button: true,
@@ -130,7 +133,7 @@ class ControlScreen extends StatelessWidget {
       ),
     );
   }
-
+ 
   static String _movementLabel(Movement movement) => switch (movement) {
     Movement.forward => 'AVANZANDO',
     Movement.backward => 'RETROCEDIENDO',
@@ -139,18 +142,18 @@ class ControlScreen extends StatelessWidget {
     Movement.stopped => 'DETENIDO',
   };
 }
-
+ 
 class _CommandPanel extends StatelessWidget {
   const _CommandPanel({
     required this.movement,
     required this.enabled,
     required this.onMove,
   });
-
+ 
   final Movement movement;
   final bool enabled;
   final ValueChanged<Movement> onMove;
-
+ 
   @override
   Widget build(BuildContext context) {
     return HmiCard(
@@ -225,7 +228,7 @@ class _CommandPanel extends StatelessWidget {
     );
   }
 }
-
+ 
 class _DirectionButton extends StatelessWidget {
   const _DirectionButton({
     required this.label,
@@ -236,7 +239,7 @@ class _DirectionButton extends StatelessWidget {
     required this.onMove,
     this.danger = false,
   });
-
+ 
   final String label;
   final IconData icon;
   final Movement movement;
@@ -244,7 +247,7 @@ class _DirectionButton extends StatelessWidget {
   final bool enabled;
   final ValueChanged<Movement> onMove;
   final bool danger;
-
+ 
   @override
   Widget build(BuildContext context) {
     final color = danger ? AppColors.danger : AppColors.ecoGreen;
@@ -269,3 +272,4 @@ class _DirectionButton extends StatelessWidget {
     );
   }
 }
+ 
