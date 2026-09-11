@@ -1,0 +1,4 @@
+# Copie este archivo como local.properties o ejecute flutter create/flutter run.
+# Use rutas reales de su equipo Windows y escape las barras invertidas.
+sdk.dir=C:\\Users\\USUARIO\\AppData\\Local\\Android\\Sdk
+flutter.sdk=C:\\src\\flutter
