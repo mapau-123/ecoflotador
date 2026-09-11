@@ -177,6 +177,16 @@ class EcoFlotadorController extends ChangeNotifier {
     if (controlsEnabled) await _send(Esp32Protocol.beltSpeed(speed));
   }
 
+  int motorSpeedLevel = 2; // 1=lento, 2=medio, 3=rápido (por defecto medio, igual que el ESP32)
+
+  Future<void> setMotorSpeed(int level) async {
+    final clamped = level.clamp(1, 3);
+    if (motorSpeedLevel == clamped) return;
+    motorSpeedLevel = clamped;
+    notifyListeners();
+    if (controlsEnabled) await _send('VEL:$clamped');
+  }
+
   Future<void> setDemoMode(bool enabled) async {
     settings = settings.copyWith(demoMode: enabled);
     notifyListeners();
