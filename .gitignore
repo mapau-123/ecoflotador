@@ -1,0 +1,15 @@
+# Flutter / Dart
+**/.dart_tool/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/.packages
+**/build/
+**/ios/Flutter/.last_build_id
+**/*.iml
+**/*.ipr
+**/*.iws
+**/.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
